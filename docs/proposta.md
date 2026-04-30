@@ -68,11 +68,13 @@ O **Dose Certa** é um aplicativo de celular feito para ajudar as pessoas a toma
 
 ### 🟡 PREPARAÇÃO TÉCNICA
 - **Semana 3-4:** Objetivo: App rodando ("Hello World")
-  - [ ] Instalar ambiente (Node, Expo).
-  - [ ] Firebase: Configurar Firestore e Auth e conectar.
+  - [x] Instalar ambiente (Node, Expo).
+  - [x] Firebase: Configurar Firestore e Auth e conectar.
 
 ### 🔵 MVP (NÚCLEO DO SISTEMA)
-- **Semana 5:** Funcionalidade 1 (Login Frontend e Firebase Auth).
+- **Semana 5:** Objetivo: Lógica de Login e Cadastro (Firebase Auth)
+  - [/] Implementar Interface de Login (Figma style).
+  - [ ] Conectar Firebase Auth (Login/Cadastro).
 - **Semana 6:** Funcionalidade 2 (Cadastro de medicamentos: nome, dosagem, horário).
 - **Semana 7:** Funcionalidade 3 (Listagem dos medicamentos).
 - **Semana 8:** Fechamento MVP (Marcar como "tomado" e salvar histórico).

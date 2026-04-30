@@ -19,7 +19,17 @@ Com o Dose certa, essas pessoas terão lembretes para tomar os remedios, porque 
 - Database: Firebase
 
 ## 🚀 Como Executar
-[Instruções virão aqui]
+1. Install dependencies
+
+   ```bash
+   npm install
+   ```
+
+2. Start the app
+
+   ```bash
+   npx expo start
+   ```
 
 ## 📊 Status
 🔴 Em planejamento
