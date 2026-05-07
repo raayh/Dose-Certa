@@ -30,55 +30,41 @@ export default function LoginScreen() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // ==========================================
+ // ==========================================
   // FUNÇÃO: LOGIN (Entrar em conta existente)
   // ==========================================
   const handleLogin = async () => {
-    setLoading(true); // Começa o simbolo de carregar
+    setLoading(true);
     try {
-      // Se der certo, o _layout.tsx percebe e te manda pra Home sozinho!
-      const credenciais = await signInWithEmailAndPassword(
-        auth,
-        email,
-        password,
-      );
+      const credenciais = await signInWithEmailAndPassword(auth, email, password);
 
       if (!credenciais.user.emailVerified) {
-        await signOut(auth); // Se não verificou, chuta pra fora!
+        await signOut(auth); // Chuta pra fora!
         Alert.alert("Acesso Negado", "Email não verificado");
         return;
       }
     } catch (error: any) {
-      console.log("ERRO REAL DO FIREBASE:", error.code);
-      if (error.code === "auth/invalid-credential") {
-        Alert.alert(
+      if (error.code === 'auth/invalid-credential'){
+         Alert.alert(
           `O e-mail ${email} não foi encontrado.`,
           "Deseja criar uma conta com este e-mail e senha?",
-          [
-            { text: "Não", style: "cancel" },
-            { text: "Sim, Criar!", onPress: () => handleSignUp() },
-          ],
+          [ { text: "Não", style: "cancel" }, { text: "Sim, Criar!", onPress: () => handleSignUp() } ]
         );
       } else {
         Alert.alert("Erro", "E-mail ou senha inválidos");
       }
     } finally {
-      // Para de carregar, não importa o que aconteça
       setLoading(false);
     }
   };
 
-  // ==========================================
+ // ==========================================
   // FUNÇÃO: CADASTRO (Criar conta e persistir no Firestore)
   // ==========================================
   const handleSignUp = async () => {
     setLoading(true);
     try {
-      const credentials = await createUserWithEmailAndPassword(
-        auth,
-        email,
-        password,
-      );
+      const credentials = await createUserWithEmailAndPassword(auth, email, password);
       const user = credentials.user;
 
       // =========================================
@@ -88,25 +74,20 @@ export default function LoginScreen() {
       // =========================================
       await setDoc(doc(db, "users", user.uid), {
         email: user.email,
-        created_at: new Date(),
+        created_at: new Date()
       });
 
       // Verifica se o email existe
-      await sendEmailVerification(user);
+      await sendEmailVerification(user); 
       await signOut(auth);
-      Alert.alert(
-        "Aguardando confirmação",
-        "Enviamos um link de confirmação. Verifique sua caixa de entrada (ou Spam)!",
-      );
-    } catch (error) {
-      Alert.alert(
-        "Erro no cadastro",
-        "A senha deve ter pelo menos 6 caracteres.",
-      );
+      Alert.alert("Aguardando confirmação", "Enviamos um link de confirmação. Verifique sua caixa de entrada (ou Spam)!")
+    } catch (error: any) {
+      console.log("ERRO REAL DO FIREBASE:", error.code)
+      Alert.alert("Erro no cadastro", "A senha deve ter pelo menos 6 caracteres.");
     } finally {
       setLoading(false);
     }
-  };
+  }
 
   return (
     <View style={styles.container}>
