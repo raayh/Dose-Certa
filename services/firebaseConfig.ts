@@ -1,11 +1,12 @@
 import { initializeApp } from "firebase/app";
-// @ts-ignore (Erro falso-positivo do TypeScript)
-import { initializeAuth, getReactNativePersistence, browserLocalPersistence } from "firebase/auth";
+// @ts-ignore (Erro falso-positivo do TypeScript com o React Native+Firebase)
+import { initializeAuth, getReactNativePersistence } from "firebase/auth";
 import { initializeFirestore } from "firebase/firestore";
 import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
-const firebaseConfig = { 
+// Aqui nós "puxamos" as chaves do seu arquivo secreto
+const firebaseConfig = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
   projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
