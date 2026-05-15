@@ -1,20 +1,11 @@
+import React, { useState, useEffect } from "react";
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert, Modal, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { router } from "expo-router";
-import React, { useState } from "react";
-import {
-    ActivityIndicator,
-    Alert,
-    Modal,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
-} from "react-native";
-// 🛑 IMPORTANTE: O Front-End NÃO importa firebase, auth ou db.
-// Toda a gravação é abstraída para uma camada de serviço (Back-End).
+import { auth, db } from '@/services/firebaseConfig';
+import { collection, addDoc } from 'firebase/firestore';
+import { seedMedications, clearMedications } from '@/services/seed';
 
 function Counter({
   value,
@@ -87,13 +78,9 @@ export default function AddScreen() {
   const [startDate, setStartDate] = useState(new Date());
   const [endDate, setEndDate] = useState<Date | null>(null);
   const [repeatType, setRepeatType] = useState("Todos os dias");
-  const [repeatMode, setRepeatMode] = useState<"daily" | "weekly" | "monthly">(
-    "daily",
-  );
+  const [repeatMode, setRepeatMode] = useState<"daily" | "weekly" | "monthly">("daily");
   const [selectedDayOfMonth, setSelectedDayOfMonth] = useState(15);
-  const [selectedDays, setSelectedDays] = useState<number[]>([
-    0, 1, 2, 3, 4, 5, 6,
-  ]);
+  const [selectedDays, setSelectedDays] = useState<number[]>([0, 1, 2, 3, 4, 5, 6]);
 
   const medicationTypes = [
     { name: "Comprimido" },
@@ -105,37 +92,34 @@ export default function AddScreen() {
   ];
 
   const daysOfWeek = ["D", "S", "T", "Q", "Q", "S", "S"];
-
-  // 🚧 ESPAÇO RESERVADO PARA O BACK-END (Lógica de Negócios):
-  // O desenvolvedor de Back-End irá substituir este bloco para implementar o mapeamento inteligente
-  // das unidades e o cálculo real da distribuição de horários baseados no dia.
-  // Para testes visuais do layout, usamos dados estáticos:
   const unitMap: Record<string, string> = {
-    Comprimido: "unid",
-    Cápsula: "unid",
-    Gotas: "unid",
-    Xarope: "unid",
-    Injeção: "unid",
-    Outros: "",
+    Comprimido: "mg",
+    Cápsula: "mg",
+    Gotas: "gotas",
+    Xarope: "ml",
+    Injeção: "ml",
+    Outros: "", // outros não tem essa opção
   };
-  const times = ["08:00"]; // Apenas simula um card de horário para aprovação visual
+
+  // Intervalo em minutos (24 horas * 60 minutos / quantidade de vezes)
+  const intervalMinutes = Math.floor((24 * 60) / timesPerDay);
+
+  const times = Array.from({ length: timesPerDay }, (_, i) => {
+    // Cria uma cópia do horário de início
+    const doseTime = new Date(startTime);
+    // Adiciona o intervalo em minutos
+    doseTime.setMinutes(doseTime.getMinutes() + i * intervalMinutes);
+
+    // Formata para string no formato "HH:mm" (ex: "08:30")
+    const hours = doseTime.getHours().toString().padStart(2, "0");
+    const minutes = doseTime.getMinutes().toString().padStart(2, "0");
+    return `${hours}:${minutes}`;
+  });
 
   const getStartDateLabel = () => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const compareDate = new Date(startDate);
-    compareDate.setHours(0, 0, 0, 0);
-
-    // Se for hoje
-    if (compareDate.getTime() === today.getTime()) {
-      return "Hoje";
-    }
-
-    // Se for outra data, vamos formatar para DD/MM (ex: 08/05)
-    const day = compareDate.getDate().toString().padStart(2, "0");
-    const month = (compareDate.getMonth() + 1).toString().padStart(2, "0");
-    return `${day}/${month}`;
+    const day = startDate.getDate().toString().padStart(2, "0");
+    const month = (startDate.getMonth() + 1).toString().padStart(2, "0");
+    return `Inicia dia ${day}/${month}`;
   };
 
   const getDurationLabel = () => {
@@ -174,31 +158,48 @@ export default function AddScreen() {
   };
 
   const handleSave = async () => {
-    // 1. Validação Visual
     if (!name.trim()) {
       Alert.alert("Atenção", "Por favor, digite o nome do medicamento.");
       return;
     }
 
+    const user = auth.currentUser;
+    if (!user) {
+      Alert.alert("Erro", "Usuário não autenticado. Verifique sua conexão e tente novamente.");
+      return;
+    }
+
     setLoading(true);
 
-    // 2. Simulação de processamento (O Back-End fará o trabalho pesado real)
-    setTimeout(() => {
+    try {
+      await addDoc(collection(db, "medications"), {
+        user_id: user.uid,
+        name: name,
+        type: type,
+        timesPerDay: timesPerDay,
+        dosage: dosageAmount ? `${dosageAmount} ${unitMap[type]}`.trim() : "",
+        times: times,
+        startDate: startDate.toISOString(),
+        repeatType: repeatType,
+        endDate: endDate ? endDate.toISOString() : null,
+        created_at: new Date().toISOString(),
+      });
+
       setLoading(false);
-      Alert.alert(
-        "Sucesso 🎉",
-        `O medicamento "${name}" foi cadastrado! (Simulação Front-End)`,
-        [
-          {
-            text: "OK",
-            onPress: () => {
-              resetForm();
-              router.replace("/(tabs)");
-            },
+      Alert.alert("Sucesso 🎉", `O medicamento "${name}" foi cadastrado com sucesso!`, [
+        {
+          text: "OK",
+          onPress: () => {
+            resetForm();
+            router.replace("/(tabs)");
           },
-        ],
-      );
-    }, 1500);
+        },
+      ]);
+    } catch (error) {
+      console.log("Erro ao salvar:", error);
+      setLoading(false);
+      Alert.alert("Erro", "Não foi possível salvar o medicamento no banco de dados.");
+    }
   };
 
   const resetForm = () => {
@@ -206,23 +207,50 @@ export default function AddScreen() {
     setType("Comprimido");
     seTtimesPerDay(1);
     setDosageAmount("");
-
-    // 1. Resetar data e hora de início:
-    setStartTime(new Date(2000, 0, 1, 8, 0)); // Volta para 08:00
-    setStartDate(new Date()); // Volta para Hoje
-    setEndDate(null); // Volta para Uso contínuo
-
-    // 2. Resetar as opções do modal de repetição (Bottom Sheet):
+    setStartTime(new Date(2000, 0, 1, 8, 0));
+    setStartDate(new Date());
+    setEndDate(null);
     setRepeatType("Todos os dias");
     setRepeatMode("daily");
     setSelectedDayOfMonth(15);
-    setSelectedDays([0, 1, 2, 3, 4, 5, 6]); // Todos os dias selecionados por padrão
+    setSelectedDays([0, 1, 2, 3, 4, 5, 6]);
+  };
+
+  const handleSeed = async () => {
+    setLoading(true);
+    try {
+      await seedMedications();
+      Alert.alert("🌱 Sucesso", "Banco semeado com 4 remédios de teste!");
+    } catch (error) {
+      Alert.alert("Erro", "Não foi possível semear os dados.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleClear = async () => {
+    Alert.alert("Limpar Banco", "Tem certeza que deseja apagar TODOS os seus remédios?", [
+      { text: "Cancelar", style: "cancel" },
+      {
+        text: "Sim, Limpar",
+        style: "destructive",
+        onPress: async () => {
+          setLoading(true);
+          try {
+            await clearMedications();
+            Alert.alert("🧹 Sucesso", "Todos os seus remédios foram apagados.");
+          } catch (error) {
+            Alert.alert("Erro", "Não foi possível limpar o banco.");
+          } finally {
+            setLoading(false);
+          }
+        },
+      },
+    ]);
   };
 
   return (
     <View style={styles.container}>
-      {/* Aqui vamos desenhar a Seta e o Título */}
-
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={30} style={styles.backButton} />
@@ -249,29 +277,14 @@ export default function AddScreen() {
         }}
       >
         <View style={styles.typeSelector}>
-          <ScrollView
-            horizontal
-            showsVerticalScrollIndicator={false}
-            style={styles.typeList}
-          >
+          <ScrollView horizontal showsVerticalScrollIndicator={false} style={styles.typeList}>
             {medicationTypes.map((item) => (
               <TouchableOpacity
                 key={item.name}
                 onPress={() => setType(item.name)}
-                style={[
-                  styles.typeButton,
-                  type === item.name && styles.typeButtonSelected,
-                ]}
+                style={[styles.typeButton, type === item.name && styles.typeButtonSelected]}
               >
-                <Text
-                  style={
-                    type === item.name
-                      ? styles.typeTextSelected
-                      : styles.typeText
-                  }
-                >
-                  {item.name}
-                </Text>
+                <Text style={type === item.name ? styles.typeTextSelected : styles.typeText}>{item.name}</Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
@@ -285,7 +298,6 @@ export default function AddScreen() {
           </View>
           <View style={styles.settingRow}>
             <Text style={styles.settingRowText}>Dosagem</Text>
-            {/* A "Falsa" Caixinha (Visualmente parece um input só!) */}
             <View
               style={{
                 flexDirection: "row",
@@ -304,7 +316,7 @@ export default function AddScreen() {
                   fontSize: 13,
                   color: "#333",
                   textAlign: "center",
-                  minWidth: type === "Outros" ? 100 : 35, // Caixinha maior se for texto livre
+                  minWidth: type === "Outros" ? 100 : 35,
                   padding: 0,
                 }}
                 keyboardType={type === "Outros" ? "default" : "numeric"}
@@ -313,20 +325,7 @@ export default function AddScreen() {
                 onChangeText={setDosageAmount}
                 placeholder={type === "Outros" ? "Ex: 1 colher" : "Ex: 20"}
               />
-
-              {/* Só desenha a unidade se NÃO for "Outros" */}
-              {type !== "Outros" && (
-                <Text
-                  style={{
-                    fontFamily: "Poppins_500Medium",
-                    fontSize: 13,
-                    color: "#333",
-                    marginLeft: 4,
-                  }}
-                >
-                  {unitMap[type]}
-                </Text>
-              )}
+              {type !== "Outros" && <Text style={{ fontFamily: "Poppins_500Medium", fontSize: 13, color: "#333", marginLeft: 4 }}>{unitMap[type]}</Text>}
             </View>
           </View>
           <View style={styles.setHours}>
@@ -339,11 +338,9 @@ export default function AddScreen() {
                   justifyContent: "center",
                   alignItems: "center",
                   gap: 4,
-
                   width: "50%",
                   paddingVertical: 8,
                   paddingLeft: index === 0 ? 15 : 0,
-
                   borderColor: index === 0 ? "#65b874ff" : "transparent",
                   borderWidth: index === 0 ? 0.5 : 0,
                   borderRadius: 18,
@@ -352,9 +349,7 @@ export default function AddScreen() {
               >
                 <Ionicons name="time-outline" size={20} />
                 <Text style={{ width: 50 }}>{hour}</Text>
-                {index === 0 && (
-                  <Ionicons name="pencil" size={12} color="#65b874ff" />
-                )}
+                {index === 0 && <Ionicons name="pencil" size={12} color="#65b874ff" />}
               </TouchableOpacity>
             ))}
           </View>
@@ -376,10 +371,7 @@ export default function AddScreen() {
         <View style={styles.frequencySelector}>
           <View style={styles.settingRow}>
             <Text style={styles.settingRowText}>Início</Text>
-            <TouchableOpacity
-              style={styles.selectButton}
-              onPress={() => setShowDatePicker(true)}
-            >
+            <TouchableOpacity style={styles.selectButton} onPress={() => setShowDatePicker(true)}>
               <Text style={styles.settingRowText}> {getStartDateLabel()} </Text>
               <Ionicons name="chevron-down" size={20} />
             </TouchableOpacity>
@@ -401,206 +393,71 @@ export default function AddScreen() {
 
           <View style={styles.settingRow}>
             <Text style={styles.settingRowText}>Repetir</Text>
-            <TouchableOpacity
-              style={styles.selectButton}
-              onPress={() => setShowRepeatModal(true)}
-            >
+            <TouchableOpacity style={styles.selectButton} onPress={() => setShowRepeatModal(true)}>
               <Text style={styles.settingRowText}> {repeatType} </Text>
               <Ionicons name="chevron-down" size={20} />
             </TouchableOpacity>
           </View>
 
           {showRepeatModal && (
-            <Modal
-              visible={showRepeatModal}
-              transparent={true}
-              animationType="slide"
-              onRequestClose={() => setShowRepeatModal(false)}
-            >
-              <TouchableOpacity
-                style={styles.modalContainer}
-                activeOpacity={1}
-                onPress={() => setShowRepeatModal(false)}
-              >
-                <View
-                  style={styles.modalContent}
-                  onStartShouldSetResponder={() => true}
-                >
-                  <Text style={styles.modalTitle}>
-                    {" "}
-                    Selecione os dias que deseja tomar o remédio
-                  </Text>
-
-                  {/* Opção 1: Diário */}
+            <Modal visible={showRepeatModal} transparent={true} animationType="slide" onRequestClose={() => setShowRepeatModal(false)}>
+              <TouchableOpacity style={styles.modalContainer} activeOpacity={1} onPress={() => setShowRepeatModal(false)}>
+                <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
+                  <Text style={styles.modalTitle}> Selecione os dias que deseja tomar o remédio</Text>
                   <TouchableOpacity
-                    style={[
-                      styles.modalOptionRow,
-                      repeatMode === "daily" && styles.modalOptionActive,
-                    ]}
+                    style={[styles.modalOptionRow, repeatMode === "daily" && styles.modalOptionActive]}
                     onPress={() => setRepeatMode("daily")}
                   >
-                    <Ionicons
-                      name={
-                        repeatMode === "daily"
-                          ? "radio-button-on"
-                          : "radio-button-off"
-                      }
-                      size={20}
-                      color="#65b874ff"
-                    />
+                    <Ionicons name={repeatMode === "daily" ? "radio-button-on" : "radio-button-off"} size={20} color="#65b874ff" />
                     <Text style={styles.modalOptionText}>Todos os dias</Text>
                   </TouchableOpacity>
-
-                  {/* Opção 2: Semanal */}
-                  <View
-                    style={[
-                      styles.modalOptionColumn,
-                      repeatMode === "weekly" && styles.modalOptionActive,
-                    ]}
-                  >
-                    <TouchableOpacity
-                      style={styles.modalOptionHeader}
-                      onPress={() => setRepeatMode("weekly")}
-                    >
-                      <Ionicons
-                        name={
-                          repeatMode === "weekly"
-                            ? "radio-button-on"
-                            : "radio-button-off"
-                        }
-                        size={20}
-                        color="#65b874ff"
-                      />
+                  <View style={[styles.modalOptionColumn, repeatMode === "weekly" && styles.modalOptionActive]}>
+                    <TouchableOpacity style={styles.modalOptionHeader} onPress={() => setRepeatMode("weekly")}>
+                      <Ionicons name={repeatMode === "weekly" ? "radio-button-on" : "radio-button-off"} size={20} color="#65b874ff" />
                       <Text style={styles.modalOptionText}> Semanal </Text>
                     </TouchableOpacity>
-
-                    <View
-                      style={{
-                        flexDirection: "row",
-                        gap: 6,
-                        paddingLeft: 28,
-                        marginTop: 5,
-                      }}
-                    >
+                    <View style={{ flexDirection: "row", gap: 6, paddingLeft: 28, marginTop: 5 }}>
                       {daysOfWeek.map((day, index) => {
                         const isSelected = selectedDays.includes(index);
                         return (
                           <TouchableOpacity
                             key={index}
                             onPress={() => toggleDay(index)}
-                            style={[
-                              styles.dayButton,
-                              isSelected && styles.dayButtonSelected,
-                            ]}
+                            style={[styles.dayButton, isSelected && styles.dayButtonSelected]}
                           >
-                            <Text
-                              style={[
-                                styles.dayText,
-                                isSelected && styles.dayTextSelected,
-                              ]}
-                            >
-                              {day}
-                            </Text>
+                            <Text style={[styles.dayText, isSelected && styles.dayTextSelected]}>{day}</Text>
                           </TouchableOpacity>
                         );
                       })}
                     </View>
                   </View>
-
-                  {/* Opção 3: Mensal */}
-                  <View
-                    style={[
-                      styles.modalOptionColumn,
-                      repeatMode === "monthly" && styles.modalOptionActive,
-                    ]}
-                  >
-                    <TouchableOpacity
-                      style={styles.modalOptionHeader}
-                      onPress={() => setRepeatMode("monthly")}
-                    >
-                      <Ionicons
-                        name={
-                          repeatMode === "monthly"
-                            ? "radio-button-on"
-                            : "radio-button-off"
-                        }
-                        size={20}
-                        color="#65b874ff"
-                      />
+                  <View style={[styles.modalOptionColumn, repeatMode === "monthly" && styles.modalOptionActive]}>
+                    <TouchableOpacity style={styles.modalOptionHeader} onPress={() => setRepeatMode("monthly")}>
+                      <Ionicons name={repeatMode === "monthly" ? "radio-button-on" : "radio-button-off"} size={20} color="#65b874ff" />
                       <Text style={styles.modalOptionText}> Mensal </Text>
                     </TouchableOpacity>
-
-                    <View
-                      style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        gap: 15,
-                        paddingLeft: 28,
-                        marginTop: 5,
-                      }}
-                    >
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 15, paddingLeft: 28, marginTop: 5 }}>
                       <Text style={styles.modalSubText}>Escolha o dia:</Text>
                       <TextInput
                         style={styles.dayInput}
-                        value={
-                          selectedDayOfMonth === 0
-                            ? ""
-                            : selectedDayOfMonth.toString()
-                        }
+                        value={selectedDayOfMonth === 0 ? "" : selectedDayOfMonth.toString()}
                         keyboardType="numeric"
                         maxLength={2}
                         onChangeText={(text) => {
                           setRepeatMode("monthly");
-                          const cleanText = text.replace(/[^0-9]/g, ""); // Garante apenas números
+                          const cleanText = text.replace(/[^0-9]/g, "");
                           const num = parseInt(cleanText) || 0;
-                          if (num <= 31) {
-                            setSelectedDayOfMonth(num);
-                          }
+                          if (num <= 31) setSelectedDayOfMonth(num);
                         }}
                       />
                     </View>
                   </View>
-
-                  {/* Botões de Ação */}
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      justifyContent: "space-between",
-                      marginTop: 15,
-                    }}
-                  >
-                    <TouchableOpacity
-                      style={[
-                        styles.modalActionButton,
-                        { backgroundColor: "#F5F5F5" },
-                      ]}
-                      onPress={() => setShowRepeatModal(false)}
-                    >
-                      <Text
-                        style={[
-                          styles.modalActionButtonText,
-                          { color: "#7F7F7F" },
-                        ]}
-                      >
-                        Cancelar
-                      </Text>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 15 }}>
+                    <TouchableOpacity style={[styles.modalActionButton, { backgroundColor: "#F5F5F5" }]} onPress={() => setShowRepeatModal(false)}>
+                      <Text style={[styles.modalActionButtonText, { color: "#7F7F7F" }]}>Cancelar</Text>
                     </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={[
-                        styles.modalActionButton,
-                        { backgroundColor: "#65b874ff" },
-                      ]}
-                      onPress={handleSaveRepeat}
-                    >
-                      <Text
-                        style={[
-                          styles.modalActionButtonText,
-                          { color: "#FFFFFF" },
-                        ]}
-                      >
-                        Confirmar
-                      </Text>
+                    <TouchableOpacity style={[styles.modalActionButton, { backgroundColor: "#65b874ff" }]} onPress={handleSaveRepeat}>
+                      <Text style={[styles.modalActionButtonText, { color: "#FFFFFF" }]}>Confirmar</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -613,18 +470,11 @@ export default function AddScreen() {
             <TouchableOpacity
               style={styles.selectButton}
               onPress={() => {
-                Alert.alert(
-                  "Duração do Tratamento",
-                  "Escolha como o remédio será tomado:",
-                  [
-                    { text: "Uso contínuo", onPress: () => setEndDate(null) },
-                    {
-                      text: "Escolher data final",
-                      onPress: () => setShowEndDatePicker(true),
-                    },
-                    { text: "Cancelar", style: "cancel" },
-                  ],
-                );
+                Alert.alert("Duração do Tratamento", "Escolha como o remédio será tomado:", [
+                  { text: "Uso contínuo", onPress: () => setEndDate(null) },
+                  { text: "Escolher data final", onPress: () => setShowEndDatePicker(true) },
+                  { text: "Cancelar", style: "cancel" },
+                ]);
               }}
             >
               <Text style={styles.settingRowText}> {getDurationLabel()} </Text>
@@ -636,28 +486,35 @@ export default function AddScreen() {
             <DateTimePicker
               value={endDate || new Date()}
               mode="date"
-              minimumDate={startDate} // <-- Escudo de segurança!
+              minimumDate={startDate}
               onChange={(event, selectedDate) => {
                 setShowEndDatePicker(false);
-                if (selectedDate) {
-                  setEndDate(selectedDate);
-                }
+                if (selectedDate) setEndDate(selectedDate);
               }}
             />
           )}
         </View>
+
+        {/* 🛠️ SEÇÃO ADMIN (SEED E CLEAR) */}
+        <View style={{ flexDirection: "row", gap: 10, marginTop: 10 }}>
+          <TouchableOpacity
+            style={[styles.saveButton, { flex: 1, backgroundColor: "#EBF7EE", borderWidth: 1, borderColor: "#65b874ff" }]}
+            onPress={handleSeed}
+          >
+            <Text style={[styles.saveButtonText, { color: "#65b874ff" }]}>🌱 Semear Teste</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.saveButton, { flex: 1, backgroundColor: "#FFEBEE", borderWidth: 1, borderColor: "#FF5252" }]}
+            onPress={handleClear}
+          >
+            <Text style={[styles.saveButtonText, { color: "#FF5252" }]}>🧹 Limpar Banco</Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
 
-      <TouchableOpacity
-        style={styles.saveButton}
-        onPress={handleSave}
-        disabled={loading}
-      >
-        {loading ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.saveButtonText}>Salvar medicamento</Text>
-        )}
+      <TouchableOpacity style={styles.saveButton} onPress={handleSave} disabled={loading}>
+        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveButtonText}>Salvar medicamento</Text>}
       </TouchableOpacity>
 
       {loading && (
@@ -668,18 +525,14 @@ export default function AddScreen() {
             left: 0,
             right: 0,
             bottom: 0,
-            backgroundColor: "rgba(255, 255, 255, 0.7)", // Fundo branco semi-transparente
+            backgroundColor: "rgba(255, 255, 255, 0.7)",
             justifyContent: "center",
             alignItems: "center",
-            zIndex: 999, // Força ficar no topo da "pilha"
+            zIndex: 999,
           }}
         >
           <ActivityIndicator size="large" color="#65b874ff" />
-          <Text
-            style={{ marginTop: 10, color: "#65b874ff", fontWeight: "600" }}
-          >
-            Salvando...
-          </Text>
+          <Text style={{ marginTop: 10, color: "#65b874ff", fontWeight: "600" }}>Aguarde...</Text>
         </View>
       )}
     </View>
@@ -722,33 +575,29 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     flexDirection: "row",
-
     paddingHorizontal: 16,
     paddingVertical: 9,
     marginRight: 10,
     gap: 5,
-
     borderRadius: 10,
     backgroundColor: "#FFFFFF",
-
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 10,
-
     elevation: 3,
   },
   typeButtonSelected: {
     backgroundColor: "#65b874ff",
   },
   typeTextSelected: {
-    fontFamily: "Poppins_500Medium", // Após instalar e carregar
+    fontFamily: "Poppins_500Medium",
     fontSize: 11,
     fontWeight: "500",
     color: "#fff",
   },
   typeText: {
-    fontFamily: "Poppins_500Medium", // Após instalar e carregar
+    fontFamily: "Poppins_500Medium",
     fontSize: 11,
     fontWeight: "500",
   },
@@ -757,7 +606,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
   },
   settingRowText: {
-    fontFamily: "Poppins_500Medium", // Após instalar e carregar
+    fontFamily: "Poppins_500Medium",
     fontSize: 13,
     fontWeight: "500",
   },
@@ -777,11 +626,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     flexDirection: "row",
     gap: 3,
-
     borderColor: "#65b874ff",
     borderWidth: 0.5,
     borderRadius: 26,
-
     paddingHorizontal: 5,
     paddingTop: 2,
   },
@@ -822,11 +669,6 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     textAlign: "center",
   },
-  modalOption: {
-    paddingVertical: 14,
-    borderBottomWidth: 0.5,
-    borderBottomColor: "#E0E0E0",
-  },
   modalOptionRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -847,7 +689,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   modalOptionActive: {
-    backgroundColor: "#65b87415", // Fundo levemente verde quando ativo
+    backgroundColor: "#65b87415",
   },
   modalOptionText: {
     fontFamily: "Poppins_500Medium",
