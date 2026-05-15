@@ -74,6 +74,7 @@ export default function LoginScreen() {
       // =========================================
       await setDoc(doc(db, "users", user.uid), {
         email: user.email,
+        user_id: user.uid,
         created_at: new Date()
       });
 

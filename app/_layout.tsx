@@ -1,23 +1,15 @@
 import { auth } from "@/services/firebaseConfig";
-import {
-  Poppins_400Regular,
-  Poppins_500Medium,
-  Poppins_600SemiBold,
-  Poppins_700Bold,
-} from "@expo-google-fonts/poppins";
-import {
-  DarkTheme,
-  DefaultTheme,
-  ThemeProvider,
-} from "@react-navigation/native";
+import { Poppins_400Regular, Poppins_500Medium, Poppins_600SemiBold, Poppins_700Bold } from "@expo-google-fonts/poppins";
+import { DarkTheme, DefaultTheme, ThemeProvider } from "@react-navigation/native";
 import { useFonts } from "expo-font";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { onAuthStateChanged } from "firebase/auth";
 import { useEffect, useState } from "react";
+import { useColorScheme } from "react-native";
 
 export default function RootLayout() {
-  const colorScheme = "dark";
+  const colorScheme = useColorScheme();
   const [user, setUser] = useState<any>(null);
   const [initializing, setInitializing] = useState(true);
   const router = useRouter();
@@ -38,16 +30,16 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
-    if (initializing) return;
+    if (initializing || !fontsLoaded) return;
 
     const inAuthGroup = segments[0] === "(auth)";
 
     if (!user && !inAuthGroup) {
       router.replace("/(auth)/login");
-    } else if (user && inAuthGroup) {
+    } else if (user && user.emailVerified && inAuthGroup) {
       router.replace("/(tabs)");
     }
-  }, [user, segments, initializing]);
+  }, [user, segments, initializing, fontsLoaded]);
 
   if (initializing || !fontsLoaded) return null;
 
