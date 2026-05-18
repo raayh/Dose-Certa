@@ -33,3 +33,18 @@ export interface Medication {
   endDate: string | null; // Data final do tratamento ou null.
   created_at: string; // Timestamp da criação.
 }
+
+// ---------------------------------------------------------
+// 3. HISTÓRICO DE DOSES (Coleção "history")
+// Armazena os registros de check-in para que a Home filtre o que
+// ainda está pendente hoje.
+// ---------------------------------------------------------
+export interface MedicationHistory {
+  id?: string;
+  medication_id: string; // Chave Estrangeira do medicamento
+  user_id: string; // Chave Estrangeira do usuário
+  date: string; // Data da ação (Ex: "2026-05-13")
+  time: string; // Horário da dose teórica (Ex: "08:00")
+  status: 'taken' | 'skipped'; // Se o usuário tomou ou pulou
+  taken_at: string; // Timestamp exato de quando o botão foi apertado
+}
